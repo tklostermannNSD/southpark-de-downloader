@@ -30,14 +30,16 @@ usage() {
     echo "Options:"
     echo " -p                                        -  Show progress (default)"
     echo " -P                                        -  Hide progress"
-    echo " -E                                        -  Download episodes in English (default)"
+    echo " -E                                        -  Download episodes in English"
     echo " -D                                        -  Download episodes in German"
+    echo " -B                                        -  Download episodes in German and English (default)"
     echo " -u                                        -  Update episode index (default)"
     echo " -U                                        -  Skip episode index update"
 }
 
 unset OPT_SEASON OPT_EPISODE OPT_ALL OPT_EN OPT_LANG OPT_PROGRESS OPT_UPDATE_INDEX
-OPT_LANG="EN"
+OPT_LANG="DE"
+OPT_LANG2="EN"
 OPT_PROGRESS=true
 OPT_UPDATE_INDEX=true
 
@@ -58,10 +60,16 @@ while getopts "pPEDuUas:e:h" arg; do
 	    ;;
 	E)
 	    OPT_LANG="EN"
+        OPT_LANG2=""
 	    ;;
 	D)
 	    OPT_LANG="DE"
+        OPT_LANG2=""
 	    ;;
+    B)
+        OPT_LANG="DE"
+        OPT_LANG2="EN"
+        ;;
 	p)
 	    OPT_PROGRESS=true
 	    ;;
@@ -82,46 +90,76 @@ while getopts "pPEDuUas:e:h" arg; do
     esac
 done
 
-if [ "$OPT_LANG" = "DE" ]; then
-    INDEX_FILENAME="$CACHEDIR/_episode_index_DE_"
-    INDEX_INITIAL_URL="https://www.southpark.de/folgen/940f8z/south-park-cartman-und-die-analsonde-staffel-1-ep-1"
-    REGEX_EPISODE_URL="\"/folgen/[0-9a-z]\+/south-park-[0-9a-z-]\+-staffel-[0-9]\+-ep-[0-9]\+\"" 
-elif [ "$OPT_LANG" = "EN" ]; then
-    INDEX_FILENAME="$CACHEDIR/_episode_index_EN_"
-    INDEX_INITIAL_URL="https://www.southpark.de/en/episodes/940f8z/south-park-cartman-gets-an-anal-probe-season-1-ep-1"
-    REGEX_EPISODE_URL="\"/en/episodes/[0-9a-z]\+/south-park-[0-9a-z-]\+-season-[0-9]\+-ep-[0-9]\+\"" 
-fi
+
+INDEX_FILENAME_DE="$CACHEDIR/_episode_index_DE_"
+INDEX_INITIAL_URL_DE="https://www.southpark.de/folgen/940f8z/south-park-cartman-und-die-analsonde-staffel-1-ep-1"
+REGEX_EPISODE_URL_DE="\"/folgen/[0-9a-z]\+/south-park-[0-9a-z-]\+-staffel-[0-9]\+-ep-[0-9]\+\""
+
+INDEX_FILENAME_EN="$CACHEDIR/_episode_index_EN_"
+INDEX_INITIAL_URL_EN="https://www.southpark.de/en/episodes/940f8z/south-park-cartman-gets-an-anal-probe-season-1-ep-1"
+REGEX_EPISODE_URL_EN="\"/en/episodes/[0-9a-z]\+/south-park-[0-9a-z-]\+-season-[0-9]\+-ep-[0-9]\+\"" 
+
 
 update_index() {
-    [ ! -e "$INDEX_FILENAME" ] && echo "$INDEX_INITIAL_URL" > "$INDEX_FILENAME"
-    echo -ne "\e[32m>>> Updating episode index\e[m"
+    if [ "$OPT_LANG" = "DE" ]; then
+        update_index_de
+        if [ "$OPT_LANG2" = "EN" ]; then
+            update_index_en
+        fi
+    elif [ "$OPT_LANG" = "EN" ]; then
+        update_index_en
+    fi
+}
+
+update_index_de() {
+    [ ! -e "$INDEX_FILENAME_DE" ] && echo "$INDEX_INITIAL_URL_DE" > "$INDEX_FILENAME_DE"
+    echo -ne "\e[32m>>> Updating episode index DE\e[m"
     while true; do
-	local URL=$(tail -n1 "$INDEX_FILENAME")
-	local NEWURLS=$(curl -s "$URL" | grep -o "$REGEX_EPISODE_URL" | tr -d "\"" | sed -E "s/^/https:\/\/www.southpark.de/g")
-	[ "$URL" = $(printf "$NEWURLS" | tail -n1) ] && break
-	echo "$NEWURLS" >> "$INDEX_FILENAME"
-	echo -ne "\e[32m.\e[m"
+    local URL=$(tail -n1 "$INDEX_FILENAME_DE")
+    local NEWURLS=$(curl -s "$URL" | grep -o "$REGEX_EPISODE_URL_DE" | tr -d "\"" | sed -E "s/^/https:\/\/www.southpark.de/g")
+    [ "$URL" = $(printf "$NEWURLS" | tail -n1) ] && break
+    echo "$NEWURLS" >> "$INDEX_FILENAME_DE"
+    echo -ne "\e[32m.\e[m"
     done
     # The awk command removes duplicate lines
-    local NEW_INDEX=$(awk '!x[$0]++' "$INDEX_FILENAME")
-    printf "$NEW_INDEX" > "$INDEX_FILENAME"
+    local NEW_INDEX=$(awk '!x[$0]++' "$INDEX_FILENAME_DE")
+    printf "$NEW_INDEX" > "$INDEX_FILENAME_DE"
+    echo
+}
+
+update_index_en() {
+    [ ! -e "$INDEX_FILENAME_EN" ] && echo "$INDEX_INITIAL_URL_EN" > "$INDEX_FILENAME_EN"
+    echo -ne "\e[32m>>> Updating episode index EN\e[m"
+    while true; do
+    local URL=$(tail -n1 "$INDEX_FILENAME_EN")
+    local NEWURLS=$(curl -s "$URL" | grep -o "$REGEX_EPISODE_URL_EN" | tr -d "\"" | sed -E "s/^/https:\/\/www.southpark.de/g")
+    [ "$URL" = $(printf "$NEWURLS" | tail -n1) ] && break
+    echo "$NEWURLS" >> "$INDEX_FILENAME_EN"
+    echo -ne "\e[32m.\e[m"
+    done
+    # The awk command removes duplicate lines
+    local NEW_INDEX=$(awk '!x[$0]++' "$INDEX_FILENAME_EN")
+    printf "$NEW_INDEX" > "$INDEX_FILENAME_EN"
     echo
 }
 
 # Returns all episode URLs in the specified season
 get_season() {
+    local INDEX_FILENAME="$CACHEDIR/_episode_index_$2_"
     local SEASON_NUMBER="$1"
     grep "\-${SEASON_NUMBER}-ep-[0-9]\+$" "$INDEX_FILENAME"
 }
 
 # Returns the URL of the specified episode
 get_episode() {
+    local INDEX_FILENAME="$CACHEDIR/_episode_index_$3_"
     local SEASON_NUMBER="$1"
     local EPISODE_NUMBER="$2"
     grep "\-${SEASON_NUMBER}-ep-${EPISODE_NUMBER}$" "$INDEX_FILENAME"
 }
 
 get_num_seasons() {
+    local INDEX_FILENAME="$CACHEDIR/_episode_index_$1_"
     # Effectively searches, how many "episode 1s" there are in the index
     grep "\-[0-9]\+-ep-1$" "$INDEX_FILENAME" | wc -l
 }
@@ -129,12 +167,12 @@ get_num_seasons() {
 # Returns the number of episodes in the specified season
 get_num_episodes() {
     local SEASON_NUMBER="$1"
-    get_season "$SEASON_NUMBER" | wc -l
+    get_season "$SEASON_NUMBER" $2 | wc -l
 }
 
 tmp_cleanup() {
     p_info "Cleaning up temporary files"
-    rm -rf "$TMPDIR"
+    #rm -rf "$TMPDIR"
 }
 
 # Monitors size of downloaded video files; takes temp folder as arg
@@ -163,30 +201,59 @@ merge_interrupt() {
 
 # Takes season and episode number as arguments
 download_episode() {
-    local SEASON_NUMBER="$1"
-    local EPISODE_NUMBER="$2"
-    local OUTFILE="${OUTDIR}/South_Park_S${SEASON_NUMBER}_E${EPISODE_NUMBER}_${OPT_LANG}.mp4"
+    TMPDIR=$(mktemp -d "/tmp/southparkdownloader.XXXXXXXXXX")
+    local SEASON_NUMBER=$1
+    local EPISODE_NUMBER=$2
+    local OUTFILE="${OUTDIR}/Season $(printf '%02d' ${SEASON_NUMBER})/South Park (1997) - s$(printf '%02d' ${SEASON_NUMBER})e$(printf '%02d' ${EPISODE_NUMBER}).mp4"
+    local TMPFILE="${TMPDIR}/South Park (1997) - s$(printf '%02d' ${SEASON_NUMBER})e$(printf '%02d' ${EPISODE_NUMBER}) [${OPT_LANG}].mp4"
     [ -e "$OUTFILE" ] && echo "Already downloaded Season ${SEASON_NUMBER} Episode ${EPISODE_NUMBER}" && return
-    local URL=$(get_episode "$SEASON_NUMBER" "$EPISODE_NUMBER")
+    local URL=$(get_episode "$SEASON_NUMBER" "$EPISODE_NUMBER" "$OPT_LANG")
     [ -z "$URL" ] && echo "Unable to download Season ${SEASON_NUMBER} Episode ${EPISODE_NUMBER}; skipping" && return
     p_info "Downloading Season $SEASON_NUMBER Episode $EPISODE_NUMBER ($URL)"
     trap download_interrupt SIGINT
-    TMPDIR=$(mktemp -d "/tmp/southparkdownloader.XXXXXXXXXX")
     [ -n "$OPT_PROGRESS" ] && monitor_progress "$TMPDIR"&
     pushd "$TMPDIR" > /dev/null
-    if ! "$YOUTUBE_DL" "$URL" 2>/dev/null | grep --line-buffered "^\[download\]" | grep -v --line-buffered "^\[download\] Destination:"; then
+    if ! "$YOUTUBE_DL" -f best "$URL" 2>/dev/null | grep --line-buffered "^\[download\]" | grep -v --line-buffered "^\[download\] Destination:"; then
 	p_info "possible youtube-dl \e[1;31mERROR\e[m"
 	tmp_cleanup
 	exit 1
     fi
     echo "[download] Merging video files"
-    trap "merge_interrupt \"$OUTFILE\"" SIGINT
+    trap "merge_interrupt \"$TMPFILE\"" SIGINT
     # Remove all single quotes and dashes from video files, as they cause problems
-    for i in ./*.mp4; do mv -n "$i" "$(echo $i | tr -d \'-)"; done
+    for i in $TMPDIR/*.mp4; do mv -n "$i" "$(echo $i | tr -d \'-)"; done
     # Find all video files and write them into the list
-    printf "file '%s'\n" ./*.mp4 > list.txt
+    printf "file '%s'\n" $TMPDIR/*.mp4 > list.txt
     # Merge video files
-    ffmpeg -safe 0 -f concat -i "list.txt" -c copy "$OUTFILE" 2>/dev/null
+    ffmpeg -safe 0 -f concat -i "list.txt" -c copy "$TMPFILE" 2>/dev/null
+
+    if [ "$OPT_LANG2" = "EN" ]; then
+        local TMPFILE2="${TMPDIR}/South Park (1997) - s$(printf '%02d' ${SEASON_NUMBER})e$(printf '%02d' ${EPISODE_NUMBER}) [${OPT_LANG2}].m4a"
+        [ -e "$TMPFILE2" ] && echo "Already downloaded Season ${SEASON_NUMBER} Episode ${EPISODE_NUMBER}" && return
+        local URL2=$(get_episode "$SEASON_NUMBER" "$EPISODE_NUMBER" "$OPT_LANG2")
+        [ -z "$URL2" ] && echo "Unable to download Season ${SEASON_NUMBER} Episode ${EPISODE_NUMBER}; skipping" && return
+        p_info "Downloading Season $SEASON_NUMBER Episode $EPISODE_NUMBER ($URL2)"
+        trap download_interrupt SIGINT
+        [ -n "$OPT_PROGRESS" ] && monitor_progress "$TMPDIR"&
+        pushd "$TMPDIR" > /dev/null
+        if ! "$YOUTUBE_DL" -x "$URL2" 2>/dev/null | grep --line-buffered "^\[download\]" | grep -v --line-buffered "^\[download\] Destination:"; then
+        p_info "possible youtube-dl \e[1;31mERROR\e[m"
+        tmp_cleanup
+        exit 1
+        fi
+        echo "[download] Merging second language audio files"
+        trap "merge_interrupt \"$TMPFILE2\"" SIGINT
+        # Remove all single quotes and dashes from video files, as they cause problems
+        for i in $TMPDIR/*.m4a; do mv -n "$i" "$(echo $i | tr -d \'-)"; done
+        # Find all video files and write them into the list
+        printf "file '%s'\n" $TMPDIR/*.m4a > list2.txt
+        # Merge video files
+        ffmpeg -safe 0 -f concat -i "list2.txt" -c copy "$TMPFILE2" 2>/dev/null
+        echo "[download] Merging video and audio files"
+        ffmpeg  -i "${TMPFILE}" -i "${TMPFILE2}" -codec copy -map 0:v:0 -map 0:a:0 -map 1:0 -shortest -metadata:s:a:0 language=ger -metadata:s:a:1 language=eng "${OUTFILE}" 2>/dev/null
+    else
+        mv "$TMPFILE" "$OUTFILE"
+    fi
     popd > /dev/null
     trap - SIGINT
     tmp_cleanup
@@ -195,14 +262,14 @@ download_episode() {
 # Takes season number as an argument
 download_season() {
     local SEASON_NUMBER="$1"
-    local NUM_EPISODES=$(get_num_episodes "$SEASON_NUMBER")
+    local NUM_EPISODES=$(get_num_episodes "$SEASON_NUMBER" "$OPT_LANG")
     for i in $(seq "$NUM_EPISODES"); do
 	download_episode "$SEASON_NUMBER" "$i"
     done
 }
 
 download_all() {
-    local NUM_SEASONS=$(get_num_seasons)
+    local NUM_SEASONS=$(get_num_seasons "$OPT_LANG")
     for i in $(seq "$NUM_SEASONS"); do
 	download_season "$i"
     done
@@ -210,11 +277,11 @@ download_all() {
 
 if [ -n "$OPT_SEASON" ]; then
     [ -n "$OPT_UPDATE_INDEX" ] && update_index
-    [ -z "$(get_season $OPT_SEASON)" ] &&
+    [ -z "$(get_season $OPT_SEASON $OPT_LANG)" ] &&
 	p_error "Unable to find Season $OPT_SEASON" &&
 	exit 1
     if [ -n "$OPT_EPISODE" ]; then
-	[ -z "$(get_episode $OPT_SEASON $OPT_EPISODE)" ] &&
+	[ -z "$(get_episode $OPT_SEASON $OPT_EPISODE $OPT_LANG)" ] &&
 	    p_error "Unable to find Season $OPT_SEASON Episode $OPT_EPISODE" &&
 	    exit 1
 	p_info "Going to download Season $OPT_SEASON Episode $OPT_EPISODE"
