@@ -204,6 +204,7 @@ download_episode() {
     TMPDIR=$(mktemp -d "/tmp/southparkdownloader.XXXXXXXXXX")
     local SEASON_NUMBER=$1
     local EPISODE_NUMBER=$2
+    mkdir -p "${OUTDIR}/Season $(printf '%02d' ${SEASON_NUMBER})"
     local OUTFILE="${OUTDIR}/Season $(printf '%02d' ${SEASON_NUMBER})/South Park (1997) - s$(printf '%02d' ${SEASON_NUMBER})e$(printf '%02d' ${EPISODE_NUMBER}).mp4"
     local TMPFILE="${TMPDIR}/South Park (1997) - s$(printf '%02d' ${SEASON_NUMBER})e$(printf '%02d' ${EPISODE_NUMBER}) [${OPT_LANG}].mp4"
     [ -e "$OUTFILE" ] && echo "Already downloaded Season ${SEASON_NUMBER} Episode ${EPISODE_NUMBER}" && return
